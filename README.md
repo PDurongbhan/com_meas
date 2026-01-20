@@ -1,4 +1,4 @@
-# Hello COM_MEAS with AimIO (Windows, CMake, conda)
+# COM_MEAS with AimIO (Windows, CMake, conda)
 
 This repository is a release build of a small application
 to perform joint centre of mass calculation on **Windows** using:
