@@ -1,0 +1,19 @@
+# build artifacts
+build*
+*.exe
+*.pdb
+*.obj
+*.aim
+*.csv
+
+# cmake
+CMakeFiles/
+CMakeCache.txt
+
+# conda / environment noise
+.env
+.vscode/
+
+# windows
+desktop.ini
+
