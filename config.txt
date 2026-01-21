@@ -1,0 +1,4 @@
+C:\COMMS\Test Project\Input
+r0000002_t_sub_taln.aim r0000002_f_sub_taln.aim
+r0000003_t_sub_taln.aim r0000003_f_sub_taln.aim
+r0000004_t_sub_taln.aim r0000004_f_sub_taln.aim

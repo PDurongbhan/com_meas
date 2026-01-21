@@ -159,26 +159,39 @@ cmake --build build-rel
 ```
 
 ##Run com_meas
+
+Single:
 ```
-build-rel\com_meas.exe distal_bone.aim proximal_bone.aim
+.\com_meas image1.aim image2.aim -o out.csv
 ```
 
 Expected output:
-
 ```
-Read Aim 1 image data: completed
-
-Read Aim 1 image header: completed
-
-Read Aim 2 image data: completed
-
-Read Aim 2 image header: completed
-
 The distance between the center of masses is : 4.65537
 The inclination with respect to x: 134.91 y: 73.6584 z: 49.4602
-File opened successfully.
-File closed successfully.
 ```
+
+Batch:
+```
+.\com_meas config.txt -o out.csv
+```
+
+Sample config.txt
+```
+C:\COMMS\Test Project\Input
+r0000002_t_sub_taln.aim r0000002_f_sub_taln.aim
+r0000003_t_sub_taln.aim r0000003_f_sub_taln.aim
+r0000004_t_sub_taln.aim r0000004_f_sub_taln.aim
+```
+
+Expected output:
+```
+Base directory: C:\COMMS\Test Project\Input
+Pairs: 3
+Done. Failures: 0
+```
+
+
 
 ---
 

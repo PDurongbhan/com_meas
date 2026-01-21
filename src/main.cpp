@@ -16,211 +16,360 @@
 ||                                                                             
 ||  modified:  06.10.2014, Patrick Weber, on VMS at ETH using Aimpack
 ||             27.06.2019, Pholpat Durongbhan, on VMS at UoM using Aimpack
-||             19.01.2026, Pholpat Durongbhan, on Windows at UoM using AimIO						
+||             19.01.2026, Pholpat Durongbhan, on Windows at UoM using AimIO
+||             21.01.2026, Added batch/config mode + robust CSV output						
 |\----------------------------------------------------------------------------*/
 
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
 #include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <filesystem>
 #include "AimIO/AimIO.h"
 //#include "COM_MEAS.hxx"
-#define PROC_LOG_STRING \
-"!                                                                               "\
-"!  Processing Log                                                               "\
-"!                                                                               "\
-"!-------------------------------------------------------------------------------"
 
-#define USAGE \
-"USAGE: COM_MEAS file-in file-in2"
+namespace fs = std::filesystem;
 
-void COM_MEAS(AimIO::AimFile *in1Aim, AimIO::AimFile *in2Aim);
-int mini(int a, int b);
-float distance(int x,int y,int z,int xx, int yy,int zz);
+static const char* USAGE =
+R"(USAGE:
+  COM_MEAS <file1> <file2> [-o out.csv]
+  COM_MEAS <config.txt> [-o out.csv]
 
-int main(int argc, char *argv[]){
+CONFIG FORMAT:
+  First non-empty, non-comment line: input folder path
+  Subsequent non-empty, non-comment lines: "<image1> <image2>"
 
-	int status;
-	if(argc != 3) {
-		printf(USAGE);
-		exit(0);
-	}
-	char* infile1 = argv[1];
-	char* infile2 = argv[2];
+NOTES:
+  - Lines starting with # or // are treated as comments
+  - Output defaults to COMMS_RESULT.csv if -o not provided
+)";
 
-	// Create AimFile object.
-	AimIO::AimFile in1Aim;
-	AimIO::AimFile in2Aim;
+struct Metrics {
+  double dist_mm = 0.0;
+  double anglex_deg = 0.0;
+  double angley_deg = 0.0;
+  double anglez_deg = 0.0;
+};
 
-	// Read header.
-	in1Aim.filename = infile1;
-	in1Aim.ReadImageInfo();
-	
-	in2Aim.filename = infile2;
-	in2Aim.ReadImageInfo();
-	
-	COM_MEAS(&in1Aim, &in2Aim);
+struct Pair {
+  std::string f1;
+  std::string f2;
+};
 
-	return(0);
+static inline std::string trim(const std::string& s) {
+  const char* ws = " \t\r\n";
+  const auto b = s.find_first_not_of(ws);
+  if (b == std::string::npos) return "";
+  const auto e = s.find_last_not_of(ws);
+  return s.substr(b, e - b + 1);
 }
-//-----------------------------------------------------------------------------// function COM_MEAS//-----------------------------------------------------------------------------
-void COM_MEAS(AimIO::AimFile *in1Aim, AimIO::AimFile *in2Aim) {
-	// Create a buffer for the image 1 data.
-	assert (in1Aim->buffer_type == AimIO::AimFile::AIMFILE_TYPE_CHAR);
-	size_t size1 = long_product (in1Aim->dimensions);
-	std::vector<char> image_data1 (size1);
 
-	// Read the image 1 data.
-	in1Aim->ReadImageData (image_data1.data(), size1);
-	printf("\nRead Aim 1 image data: completed\n");
-	
-	// Read the image 1 header
-	const int64_t dimx1 = in1Aim->dimensions[0];  // Num rows is a compile-time constant
-	const int64_t dimy1 = in1Aim->dimensions[1];  // Num columns is a compile-time constant
-   	const int64_t dimz1 = in1Aim->dimensions[2];  // Num slices is a compile-time constant
-	const int64_t offsetx1 = in1Aim->position[0];
-	const int64_t offsety1 = in1Aim->position[1];
-	const int64_t offsetz1 = in1Aim->position[2];
-	const float elsize1 = in1Aim->element_size[0];
-	printf("\nRead Aim 1 image header: completed\n");
-
-	// Create a buffer for the image 2 data.
-	assert (in2Aim->buffer_type == AimIO::AimFile::AIMFILE_TYPE_CHAR);
-	size_t size2 = long_product (in2Aim->dimensions);
-	std::vector<char> image_data2 (size2);
-	
-	// Read the image 2 data.
-	in2Aim->ReadImageData (image_data2.data(), size2);
-	printf("\nRead Aim 2 image data: completed\n");
-
-	// Read the image 2 header
-	const int64_t dimx2 = in2Aim->dimensions[0];  // Num rows is a compile-time constant
-	const int64_t dimy2 = in2Aim->dimensions[1];  // Num columns is a compile-time constant
-   	const int64_t dimz2 = in2Aim->dimensions[2];  // Num slices is a compile-time constant
-	const int64_t offsetx2 = in2Aim->position[0];
-	const int64_t offsety2 = in2Aim->position[1];
-	const int64_t offsetz2 = in2Aim->position[2];
-	const float elsize2 = in2Aim->element_size[0];
-	printf("\nRead Aim 2 image header: completed\n");
-
-	/* Used for debugging
-	// Examine some header values.
-	std::cout << "The dimensions of Aim 1 are " << in1Aim->dimensions << "\n";
-	std::cout << "The position of Aim 1 is " << in1Aim->position << "\n";
-	std::cout << "The offset of Aim 1 is " << in1Aim->offset << "\n";
-	std::cout << "The dimension x of Aim 1 is " << dimx1 << "\n";
-	std::cout << "The dimension y of Aim 1 is " << dimy1 << "\n";
-	std::cout << "The dimension z of Aim 1 is " << dimz1 << "\n";
-	std::cout << "The position x of Aim 1 is " << offsetx1 << "\n";
-	std::cout << "The position y of Aim 1 is " << offsety1 << "\n";
-	std::cout << "The position z of Aim 1 is " << offsetz1 << "\n";
-	std::cout << "The elsize of Aim 1 is " << elsize1 << "\n";
-	std::cout << "The size Aim 1 is " << size1 << "\n";
-	
-	
-	// Examine some header values.
-	std::cout << "The dimensions of Aim 2 are " << in2Aim->dimensions << "\n";
-	std::cout << "The position of Aim 2 is " << in2Aim->position << "\n";
-	std::cout << "The offset of Aim 2 is " << in2Aim->offset << "\n";
-	std::cout << "The dimension x of Aim 2 is " << dimx2 << "\n";
-	std::cout << "The dimension y of Aim 2 is " << dimy2 << "\n";
-	std::cout << "The dimension z of Aim 2 is " << dimz2 << "\n";
-	std::cout << "The position x of Aim 2 is " << offsetx2 << "\n";
-	std::cout << "The position y of Aim 2 is " << offsety2 << "\n";
-	std::cout << "The position z of Aim 2 is " << offsetz2 << "\n";
-	std::cout << "The elsize of Aim 2 is " << elsize2 << "\n";
-	std::cout << "The size Aim 2 is " << size2 << "\n";
-	*/
-	
-	int64_t i,j,k;
-	i=0;
-	//find COM
-	int64_t offx1=0;
-	int64_t offy1=0;
-	int64_t offz1 =0;
-	int64_t offx2=0;
-	int64_t offy2=0;
-	int64_t offz2 =0;
-	int64_t count1=0;
-	int64_t count2=0;
-	
-	// go over all image voxels and search for object voxels     	
-	for (k = 0; k < dimz1; ++k) {
-		for (j = 0; j < dimy1; ++j) {
-			for (i = 0; i < dimx1; ++i) { // search for 6 neighborhood defined borders				
-				if ((image_data1[k*dimx1*dimy1+j*dimx1+i] == 127) ) {
-					offx1=offx1+i;
-					offy1=offy1+j;
-					offz1=offz1+k;					
-					count1=count1+1;					
-				}
-			} // end i
-		} // end j
-	} // end k
-
-	offx1=(offx1/count1)+offsetx1;
-	offy1=(offy1/count1)+offsety1;
-	offz1=(offz1/count1)+offsetz1;        
-	for (k = 0; k < dimz2; ++k) {
-		for (j = 0; j < dimy2; ++j) {
-			for (i = 0; i < dimx2; ++i) { // search for 6 neighborhood defined borders
-				if ((image_data2[k*dimx2*dimy2+j*dimx2+i] == 127) ) {
-					offx2=offx2+i;
-					offy2=offy2+j;
-					offz2=offz2+k;
-					count2=count2+1;
-				}			
-			}// end i		
-		}// end j    
-	}// end k
-
-	offx2=(offx2/count2)+offsetx2;
-	offy2=(offy2/count2)+offsety2;
-	offz2=(offz2/count2)+offsetz2;
-
-	float dist,anglex, angley,anglez;
-	dist=distance(offx1,offy1,offz1,offx2,offy2,offz2);
-	anglex=57.3*acos((offx2-offx1)/dist);
-	angley=57.3*acos((offy2-offy1)/dist);
-	anglez=57.3*acos((offz2-offz1)/dist);
-	
-	/* Used for debugging
-	printf("\nInaim reset: ");
-	std::cout << "The center of mass of the reset aim is : " << offx1 << ", " << offy1 << ", " << offz1 << std::endl;
-	
-	std::cout << "Count1 is : " << count1 << std::endl;
-	std::cout << "Offx1 is : " << offx1 << std::endl;
-	std::cout << "Offy1 is : " << offy1 << std::endl;
-	std::cout << "Offz1 is : " << offz1 << std::endl;
-    
-	std::cout << "Count2 is : " << count2 << std::endl;
-	std::cout << "Offx2 is : " << offx2 << std::endl;
-	std::cout << "Offy2 is : " << offy2 << std::endl;
-	std::cout << "Offz2 is : " << offz2 << std::endl;
-	std::cout << "The center of mass of the distal mask is : " << offx1 << ", " << offy1 << ", " << offz1 << std::endl;
-	std::cout << "The center of mass of the proximal mask is : " << offx2 << ", " << offy2 << ", " << offz2 << std::endl;
-	*/
-	
-	std::cout << std::endl << "The distance between the center of masses is : " << dist*elsize1 << std::endl;
-	std::cout << "The inclination with respect to x: " << anglex << " y: " << angley << " z: " << anglez << std::endl;
-
-	FILE* file;
-	file = fopen("COMMS_RESULT.CSV","w");
-	printf("File opened successfully.\n");
-	fprintf(file,"Distance between COMS,%f,",(dist*elsize1));
-	fprintf(file,"Angle x,%f,",anglex);
-	fprintf(file,"Angle y,%f,",angley);
-	fprintf(file,"Angle z,%f",anglez);
-	fclose(file);
-	printf("File closed successfully.\n");
+static inline bool is_comment_or_empty(const std::string& line) {
+  const std::string t = trim(line);
+  if (t.empty()) return true;
+  if (t.rfind("#", 0) == 0) return true;
+  if (t.rfind("//", 0) == 0) return true;
+  return false;
 }
-//end com_meas
 
-int mini(int a,int b) {
-		if(a>b) return(b);
-		else return(a);
-		}
+static inline double clamp01(double x) {
+  if (x < -1.0) return -1.0;
+  if (x >  1.0) return  1.0;
+  return x;
+}
 
-float distance(int x,int y,int z,int xx, int yy,int zz) {
-	return(sqrt((xx-x)*(xx-x)+(yy-y)*(yy-y)+(zz-z)*(zz-z)));
+static bool parse_config(const fs::path& cfg_path, fs::path& base_dir, std::vector<Pair>& pairs, std::string& err) {
+  std::ifstream in(cfg_path);
+  if (!in) {
+    err = "Could not open config file: " + cfg_path.string();
+    return false;
+  }
+
+  std::string line;
+  bool got_base = false;
+
+  while (std::getline(in, line)) {
+    if (is_comment_or_empty(line)) continue;
+    base_dir = fs::path(trim(line));
+    got_base = true;
+    break;
+  }
+
+  if (!got_base) {
+    err = "Config file has no base directory line (first non-empty, non-comment line).";
+    return false;
+  }
+
+  while (std::getline(in, line)) {
+    if (is_comment_or_empty(line)) continue;
+
+    std::istringstream iss(line);
+    Pair p;
+    if (!(iss >> p.f1 >> p.f2)) {
+      // malformed line; skip but keep going
+      std::cerr << "Warning: skipping malformed line in config: " << line << "\n";
+      continue;
+    }
+    pairs.push_back(p);
+  }
+
+  if (pairs.empty()) {
+    err = "No valid pairs found in config file.";
+    return false;
+  }
+
+  return true;
+}
+
+static bool compute_com_and_metrics(const fs::path& file1, const fs::path& file2, Metrics& out, std::string& err) {
+  // Create AimFile objects
+  AimIO::AimFile in1Aim;
+  AimIO::AimFile in2Aim;
+
+  in1Aim.filename = file1.string().c_str();
+  in2Aim.filename = file2.string().c_str();
+
+  // Read headers
+  try {
+    in1Aim.ReadImageInfo();
+  } catch (...) {
+    err = "Failed to read header for file1: " + file1.string();
+    return false;
+  }
+  try {
+    in2Aim.ReadImageInfo();
+  } catch (...) {
+    err = "Failed to read header for file2: " + file2.string();
+    return false;
+  }
+
+  if (in1Aim.buffer_type != AimIO::AimFile::AIMFILE_TYPE_CHAR) {
+    err = "file1 buffer_type is not AIMFILE_TYPE_CHAR: " + file1.string();
+    return false;
+  }
+  if (in2Aim.buffer_type != AimIO::AimFile::AIMFILE_TYPE_CHAR) {
+    err = "file2 buffer_type is not AIMFILE_TYPE_CHAR: " + file2.string();
+    return false;
+  }
+
+  const int64_t dimx1 = in1Aim.dimensions[0];
+  const int64_t dimy1 = in1Aim.dimensions[1];
+  const int64_t dimz1 = in1Aim.dimensions[2];
+
+  const int64_t dimx2 = in2Aim.dimensions[0];
+  const int64_t dimy2 = in2Aim.dimensions[1];
+  const int64_t dimz2 = in2Aim.dimensions[2];
+
+  const int64_t offsetx1 = in1Aim.position[0];
+  const int64_t offsety1 = in1Aim.position[1];
+  const int64_t offsetz1 = in1Aim.position[2];
+
+  const int64_t offsetx2 = in2Aim.position[0];
+  const int64_t offsety2 = in2Aim.position[1];
+  const int64_t offsetz2 = in2Aim.position[2];
+
+  const double elsize1 = static_cast<double>(in1Aim.element_size[0]);
+  const double elsize2 = static_cast<double>(in2Aim.element_size[0]);
+
+  // Warn if voxel sizes differ
+  if (std::abs(elsize1 - elsize2) > 1e-9) {
+    std::cerr << "Warning: element_size differs between images ("
+              << elsize1 << " vs " << elsize2 << "). Using file1 element_size.\n";
+  }
+
+  // Read image data
+  size_t size1 = long_product(in1Aim.dimensions);
+  std::vector<char> image_data1(size1);
+  try {
+    in1Aim.ReadImageData(image_data1.data(), size1);
+  } catch (...) {
+    err = "Failed to read image data for file1: " + file1.string();
+    return false;
+  }
+
+  size_t size2 = long_product(in2Aim.dimensions);
+  std::vector<char> image_data2(size2);
+  try {
+    in2Aim.ReadImageData(image_data2.data(), size2);
+  } catch (...) {
+    err = "Failed to read image data for file2: " + file2.string();
+    return false;
+  }
+
+  // Compute COMs (in voxel coordinates, including offsets)
+  auto compute_com = [](const std::vector<char>& img, int64_t dimx, int64_t dimy, int64_t dimz,
+                        int64_t offx, int64_t offy, int64_t offz,
+                        double& cx, double& cy, double& cz, int64_t& count) -> bool {
+    int64_t sumx = 0, sumy = 0, sumz = 0;
+    count = 0;
+
+    for (int64_t k = 0; k < dimz; ++k) {
+      for (int64_t j = 0; j < dimy; ++j) {
+        const int64_t base = k * dimx * dimy + j * dimx;
+        for (int64_t i = 0; i < dimx; ++i) {
+          // Treat char as unsigned for safety
+          unsigned char v = static_cast<unsigned char>(img[base + i]);
+          if (v == 127) {
+            sumx += i;
+            sumy += j;
+            sumz += k;
+            ++count;
+          }
+        }
+      }
+    }
+
+    if (count == 0) return false;
+
+    cx = (static_cast<double>(sumx) / static_cast<double>(count)) + static_cast<double>(offx);
+    cy = (static_cast<double>(sumy) / static_cast<double>(count)) + static_cast<double>(offy);
+    cz = (static_cast<double>(sumz) / static_cast<double>(count)) + static_cast<double>(offz);
+    return true;
+  };
+
+  double cx1=0, cy1=0, cz1=0;
+  double cx2=0, cy2=0, cz2=0;
+  int64_t count1=0, count2=0;
+
+  if (!compute_com(image_data1, dimx1, dimy1, dimz1, offsetx1, offsety1, offsetz1, cx1, cy1, cz1, count1)) {
+    err = "No object voxels (value 127) found in file1: " + file1.string();
+    return false;
+  }
+  if (!compute_com(image_data2, dimx2, dimy2, dimz2, offsetx2, offsety2, offsetz2, cx2, cy2, cz2, count2)) {
+    err = "No object voxels (value 127) found in file2: " + file2.string();
+    return false;
+  }
+
+  const double dx = (cx2 - cx1);
+  const double dy = (cy2 - cy1);
+  const double dz = (cz2 - cz1);
+
+  const double dist_vox = std::sqrt(dx*dx + dy*dy + dz*dz);
+  if (dist_vox <= 0.0) {
+    err = "Distance is zero (COMs identical). Cannot compute angles reliably.";
+    return false;
+  }
+
+  out.dist_mm   = dist_vox * elsize1;
+  out.anglex_deg = std::acos(clamp01(dx / dist_vox)) * 57.3;
+  out.angley_deg = std::acos(clamp01(dy / dist_vox)) * 57.3;
+  out.anglez_deg = std::acos(clamp01(dz / dist_vox)) * 57.3;
+
+  return true;
+}
+
+static int run_single(const fs::path& f1, const fs::path& f2, const fs::path& out_csv) {
+  std::ofstream out(out_csv);
+  if (!out) {
+    std::cerr << "Error: could not open output CSV: " << out_csv << "\n";
+    return 1;
+  }
+
+  out << "File1,File2,Distance between COMS,Angle x,Angle y,Angle z,Status,Error\n";
+
+  Metrics m;
+  std::string err;
+  bool ok = compute_com_and_metrics(f1, f2, m, err);
+
+  out << f1.filename().string() << ","
+      << f2.filename().string() << ",";
+
+  if (ok) {
+    out << m.dist_mm << "," << m.anglex_deg << "," << m.angley_deg << "," << m.anglez_deg
+        << ",OK,\n";
+    std::cout << "Distance (mm): " << m.dist_mm << "\n"
+              << "Angles (deg) x=" << m.anglex_deg << " y=" << m.angley_deg << " z=" << m.anglez_deg << "\n";
+    return 0;
+  } else {
+    out << ",,,," << "FAIL," << "\"" << err << "\"\n";
+    std::cerr << "FAIL: " << err << "\n";
+    return 2;
+  }
+}
+
+static int run_config(const fs::path& cfg, const fs::path& out_csv) {
+  fs::path base_dir;
+  std::vector<Pair> pairs;
+  std::string perr;
+
+  if (!parse_config(cfg, base_dir, pairs, perr)) {
+    std::cerr << "Error parsing config: " << perr << "\n";
+    return 1;
+  }
+
+  std::ofstream out(out_csv);
+  if (!out) {
+    std::cerr << "Error: could not open output CSV: " << out_csv << "\n";
+    return 1;
+  }
+
+  out << "File1,File2,Distance between COMS,Angle x,Angle y,Angle z,Status,Error\n";
+
+  int failures = 0;
+
+  std::cout << "Base directory: " << base_dir.string() << "\n";
+  std::cout << "Pairs: " << pairs.size() << "\n";
+
+  for (size_t idx = 0; idx < pairs.size(); ++idx) {
+    const fs::path f1 = base_dir / pairs[idx].f1;
+    const fs::path f2 = base_dir / pairs[idx].f2;
+
+    Metrics m;
+    std::string err;
+    bool ok = compute_com_and_metrics(f1, f2, m, err);
+
+    out << fs::path(pairs[idx].f1).filename().string() << ","
+        << fs::path(pairs[idx].f2).filename().string() << ",";
+
+    if (ok) {
+      out << m.dist_mm << "," << m.anglex_deg << "," << m.angley_deg << "," << m.anglez_deg
+          << ",OK,\n";
+    } else {
+      ++failures;
+      out << ",,,," << "FAIL," << "\"" << err << "\"\n";
+      std::cerr << "FAIL [" << (idx + 1) << "/" << pairs.size() << "]: " << err << "\n";
+    }
+  }
+
+  std::cout << "Done. Failures: " << failures << "\n";
+  return (failures == 0) ? 0 : 2;
+}
+
+int main(int argc, char* argv[]) {
+  if (argc < 2) {
+    std::cout << USAGE;
+    return 0;
+  }
+
+  fs::path out_csv = "COMMS_RESULT.csv";
+  std::vector<std::string> positional;
+
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "-h" || a == "--help") {
+      std::cout << USAGE;
+      return 0;
+    } else if (a == "-o" || a == "--out") {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: missing value after " << a << "\n";
+        return 1;
+      }
+      out_csv = fs::path(argv[++i]);
+    } else {
+      positional.push_back(a);
+    }
+  }
+
+  if (positional.size() == 2) {
+    return run_single(fs::path(positional[0]), fs::path(positional[1]), out_csv);
+  } else if (positional.size() == 1) {
+    return run_config(fs::path(positional[0]), out_csv);
+  } else {
+    std::cout << USAGE;
+    return 1;
+  }
 }
