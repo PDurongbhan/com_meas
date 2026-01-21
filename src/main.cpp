@@ -17,7 +17,7 @@
 ||  modified:  06.10.2014, Patrick Weber, on VMS at ETH using Aimpack
 ||             27.06.2019, Pholpat Durongbhan, on VMS at UoM using Aimpack
 ||             19.01.2026, Pholpat Durongbhan, on Windows at UoM using AimIO
-||             21.01.2026, Added batch/config mode + robust CSV output						
+||             21.01.2026, Pholpat Durongbhan, added batch/config mode + robust CSV output						
 |\----------------------------------------------------------------------------*/
 
 #include <cassert>
